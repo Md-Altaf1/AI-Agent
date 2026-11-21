@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SqlDialectMappings">
+    <file url="file://$PROJECT_DIR$/backend/src/main/resources/db/migration/V1__identity_and_profile.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/backend/src/main/resources/db/migration/V2__resumes.sql" dialect="MySQL" />
+    <file url="file://$PROJECT_DIR$/backend/src/main/resources/db/migration/V3__jobs.sql" dialect="MySQL" />
+    <file url="file://$PROJECT_DIR$/backend/src/main/resources/db/migration/V4__matching_and_applications.sql" dialect="MySQL" />
+    <file url="file://$PROJECT_DIR$/backend/src/main/resources/db/migration/V5__operations.sql" dialect="GenericSQL" />
+  </component>
+</project>
