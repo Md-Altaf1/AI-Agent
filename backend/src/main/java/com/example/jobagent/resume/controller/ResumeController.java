@@ -17,7 +17,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -120,21 +119,5 @@ public class ResumeController {
                                 .toString()
                 )
                 .body(resource);
-    }
-
-    // 6. Delete Specific Resume Version
-    @DeleteMapping("/{resumeId}/versions/{versionId}")
-    public ResponseEntity<Void> deleteResumeVersion(
-            Authentication authentication,
-            @PathVariable Long resumeId,
-            @PathVariable Long versionId) {
-
-        resumeService.deleteResumeVersion(
-                authentication.getName(),
-                resumeId,
-                versionId
-        );
-
-        return ResponseEntity.noContent().build();
     }
 }
