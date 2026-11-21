@@ -9,8 +9,12 @@ import com.example.jobagent.resume.entity.ResumeVersion;
 import com.example.jobagent.resume.parser.ResumeParsingService;
 import com.example.jobagent.resume.repository.ResumeRepository;
 import com.example.jobagent.resume.repository.ResumeVersionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import com.example.jobagent.resume.entity.ParseStatus;
 import com.example.jobagent.resume.dto.ResumeResponse;
@@ -393,4 +397,41 @@ public class ResumeService {
                 version.getContentType()
         );
     }
+
+
+    private static final Logger log = LoggerFactory.getLogger(ResumeService.class);
+
+    @Transactional
+    public void deleteResumeVersion(String email, Long resumeId, Long versionId) {
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        Resume resume = resumeRepository
+                .findByIdAndUserId(resumeId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Resume not found"));
+
+        ResumeVersion version = versionRepository
+                .findByIdAndResumeId(versionId, resume.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Resume version not found"));
+
+        String storageKey = version.getStorageKey();
+        String extension = getExtension(version.getOriginalFilename());
+
+        versionRepository.delete(version);
+
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        try {
+                            fileStorageService.delete(storageKey, extension);
+                        } catch (RuntimeException exception) {
+                            log.error("Failed to delete physical resume file: {}", storageKey, exception);
+                        }
+                    }
+                }
+        );
+    }
+
 }
