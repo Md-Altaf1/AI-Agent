@@ -434,4 +434,47 @@ public class ResumeService {
         );
     }
 
+
+    @Transactional
+    public void deleteResume(String email, Long resumeId) {
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        Resume resume = resumeRepository
+                .findByIdAndUserId(resumeId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Resume not found"));
+
+        List<ResumeVersion> versions =
+                versionRepository.findByResumeIdOrderByVersionNoDesc(resumeId);
+
+        List<String[]> filesToDelete = versions.stream()
+                .map(version -> new String[]{
+                        version.getStorageKey(),
+                        getExtension(version.getOriginalFilename())
+                })
+                .toList();
+
+        resumeRepository.delete(resume);
+
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        for (String[] file : filesToDelete) {
+                            try {
+                                fileStorageService.delete(file[0], file[1]);
+                            } catch (RuntimeException exception) {
+                                log.error(
+                                        "Failed to delete physical resume file: {}",
+                                        file[0],
+                                        exception
+                                );
+                            }
+                        }
+                    }
+                }
+        );
+    }
+
 }

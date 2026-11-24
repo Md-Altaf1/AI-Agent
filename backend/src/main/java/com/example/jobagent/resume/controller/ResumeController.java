@@ -135,6 +135,19 @@ public class ResumeController {
                 resumeId,
                 versionId
         );
+        return ResponseEntity.noContent().build();
+    }
+
+    // 7. Delete Entire Resume
+    @DeleteMapping("/{resumeId}")
+    public ResponseEntity<Void> deleteResume(
+            Authentication authentication,
+            @PathVariable Long resumeId) {
+
+        resumeService.deleteResume(
+                authentication.getName(),
+                resumeId
+        );
 
         return ResponseEntity.noContent().build();
     }
