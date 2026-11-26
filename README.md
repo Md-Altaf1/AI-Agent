@@ -1,125 +1,98 @@
 # Job Agent Backend
 
-A modular, production-ready Spring Boot backend for a personal job application assistant. It manages user profiles, resume parsing and versioning, deterministic job deduplication, two-stage rule-based job matching, and a full application tracking workflow backed by an append-only audit log.
+A production-ready, containerized **Modular Monolith** backend built with **Java 21**, **Spring Boot**, **MySQL 8**, and **Docker** to manage job discovery, resume parsing, skill matching, and end-to-end application lifecycle tracking.
+
+---
+
+## Why This Project Stands Out (Engineering Impact)
+
+Most portfolio backends stop at basic CRUD. This project was engineered to solve real-world backend challenges:
+
+* **Strict State Machine Enforcement (FSM):** Job application statuses follow a deterministic Finite State Machine (`ApplicationStatus`), blocking illegal state transitions at the domain level before they ever touch the database.
+* **Concurrency Control (Optimistic Locking):** Prevents lost updates during concurrent modifications by using JPA optimistic locking paired with a global `409 Conflict` exception handler.
+* **Append-Only Audit Trail:** Every status transition is immutably logged in an append-only audit table for complete traceability.
+* **Optimized Read Queries:** Dashboard analytics (`GET /api/applications/summary`) use **Spring Data JPA Interface Projections** to aggregate counts directly at the database level without loading unnecessary entity graphs.
+* **Zero-Friction Deployment:** Multi-stage Docker build (Maven builder + lightweight Alpine JRE running as a non-root `appuser`) orchestrated with MySQL 8 and persistent Docker volumes.
 
 ---
 
 ## Tech Stack
 
-* **Language:** Java 21
-* **Framework:** Spring Boot 3.x (Web, Data JPA, Security, Validation)
-* **Database & Migrations:** MySQL 8 (InnoDB), Flyway (`ddl-auto: validate`)
-* **Authentication:** Stateless JWT (Access & Refresh token flow)
-* **Document Parsing:** Apache PDFBox (PDF), Apache POI `XWPFWordExtractor` (DOCX)
-* **ORM Mapping:** Hibernate 6 with native JSON column mapping (`@JdbcTypeCode(SqlTypes.JSON)`)
-* **Build Tool:** Maven
+| Layer | Technology |
+| :--- | :--- |
+| **Language & Framework** | Java 21, Spring Boot, Spring Web, Spring Security |
+| **Database & Migrations** | MySQL 8.0, Spring Data JPA, Hibernate, Flyway |
+| **Authentication** | Stateless JWT (`jjwt`), BCrypt Password Encoding |
+| **Document Processing** | Apache PDFBox, Apache POI (Resume Storage & Parsing) |
+| **API Documentation** | OpenAPI 3 / Swagger UI (`springdoc-openapi`) |
+| **Testing** | JUnit 5, Mockito |
+| **DevOps & Monitoring** | Docker, Docker Compose, Spring Boot Actuator |
 
 ---
 
-## Architecture
+## Core Modules
 
-The project follows a **Modular Monolith** structure organised by business domain under `com.example.jobagent`:
-
-```text
-com.example.jobagent
-├── auth          # User registration, login, JWT generation & security filter
-├── profile       # User profile, declared skills, and job search preferences
-├── resume        # Multipart file storage, SHA-256 deduplication, PDF/DOCX parsing
-├── job           # Job sources, manual import, deterministic deduplication & search
-├── matching      # Two-stage matching engine (hard filters + weighted skill scoring)
-├── application   # Application lifecycle, form answers, state machine & audit trail
-└── common.config # Global exception handling & shared security/web configuration
-```
+1. **Auth & Security:** Stateless JWT registration/login flow with role-based security filter chain.
+2. **Profile & Skills:** Candidate profile management and structured skill indexing.
+3. **Resume Management:** Secure file upload and persistent storage mapped to Docker volumes (`resume_uploads`).
+4. **Jobs & Sources:** Job ingestion and structured job listing management.
+5. **Matching Engine:** Automated scoring between candidate skills/resume and job requirements.
+6. **Applications & FSM:** Full lifecycle tracking with state transition validation, optimistic locking, and append-only audit logs.
+7. **Dashboard Summary:** Aggregated application metrics via JPA projections.
 
 ---
 
-## Key Engineering Highlights
+## Quick Start (Docker Compose)
 
-* **Deterministic Deduplication & Change Detection:** Jobs are deduplicated using a SHA-256 `dedupeKey` (normalized company, title, and URL) and tracked for description updates via `contentHash`. Resumes use SHA-256 file hashing to prevent duplicate uploads.
-* **Secure File Handling:** Resume uploads validate file types and enforce path traversal protection before writing to local storage.
-* **Two-Stage Matching Engine:**
-  1. **Hard Rule Filtering:** Evaluates excluded title keywords, experience limits, preferred locations, and employment types.
-  2. **Weighted Skill Scoring:** Scores required skills (weight `2`) and optional skills (weight `1`) against both declared user skills and extracted resume text, caching results per `(resume_version_id, job_id)` and `content_hash`.
-* **Strict Status State Machine:** Application status transitions are enforced directly in the `ApplicationStatus` domain enum to prevent invalid jumps (e.g., `DISCOVERED` directly to `INTERVIEW_SCHEDULED`).
-* **Concurrency Control:** Uses JPA `@Version` optimistic locking on `applications`, returning `409 Conflict` via `GlobalExceptionHandler` on concurrent write collisions.
-* **Append-Only Audit Log:** Every application creation, status change, and answer edit is logged to `application_events` within the same `@Transactional` boundary. Immutability is enforced at both the JPA layer (`@Immutable`) and the database layer (MySQL `BEFORE UPDATE` and `BEFORE DELETE` triggers).
-
----
-
-## API Overview
-
-All endpoints except `/api/auth/**` require an `Authorization: Bearer <accessToken>` header.
-
-| Module | Method | Endpoint | Description |
-| :--- | :--- | :--- | :--- |
-| **Auth** | `POST` | `/api/auth/register` | Register a new user account |
-| | `POST` | `/api/auth/login` | Authenticate and receive JWT tokens |
-| **Profile** | `GET / PUT` | `/api/profile` | View or update user profile |
-| | `GET / POST / DELETE` | `/api/profile/skills` | Manage declared user skills |
-| | `GET / PUT` | `/api/profile/preferences` | Manage job search preferences & hard filters |
-| **Resumes** | `POST` | `/api/resumes` | Upload a PDF/DOCX resume (`multipart/form-data`) |
-| | `GET` | `/api/resumes` | List user resumes and versions |
-| **Jobs** | `POST` | `/api/jobs/import` | Import a job with skills (auto-deduplicated) |
-| | `GET` | `/api/jobs` | Paginated list of active jobs |
-| | `GET` | `/api/jobs/{jobId}` | Fetch job details and required skills |
-| **Matching** | `POST` | `/api/matches/evaluate` | Evaluate and cache match score for a job & resume version |
-| | `GET` | `/api/matches/resume-versions/{id}` | List scored job matches ordered by score |
-| **Applications** | `POST` | `/api/applications` | Create a new job application |
-| | `GET` | `/api/applications` | Paginated list of user applications (optional `status` filter) |
-| | `PATCH` | `/api/applications/{id}/status` | Transition application status (state-machine validated) |
-| | `PUT / GET` | `/api/applications/{id}/answers` | Upsert or fetch application form answers |
-| | `GET` | `/api/applications/{id}/events` | Fetch chronological append-only audit log |
-
----
-
-## Local Setup
+Run the entire stack (MySQL 8 + Spring Boot Backend) with a single command.
 
 ### Prerequisites
-* Java 21
-* Maven 3.9+
-* MySQL 8.0+
+* Docker Desktop (with WSL 2 on Windows)
 
-### 1. Create the Database
-```sql
-CREATE DATABASE job_agent;
-```
-
-### 2. Configure Environment / `application.yml`
-Update `src/main/resources/application.yml` (or set environment variables) with your local MySQL credentials, JWT secret, and resume upload directory:
-
-```yaml
-spring:
-  datasource:
-    url: jdbc:mysql://localhost:3306/job_agent
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:your_password}
-
-app:
-  jwt:
-    secret: ${JWT_SECRET:replace-with-a-secure-256-bit-base64-secret}
-  storage:
-    resume-dir: ${RESUME_STORAGE_DIR:./uploads/resumes}
-```
-
-### 3. Run the Application
-Flyway will automatically apply all schema migrations on startup, and Hibernate will validate the entities against the schema.
-
+### 1. Clone the repository
 ```bash
-mvn spring-boot:run
+git clone https://github.com/Md-Altaf1/AI-Agent.git
+cd AI-Agent/backend
 ```
 
-The API will be available at `http://localhost:8080`.
+### 2. Start the application stack
+```bash
+docker compose up --build -d
+```
+
+### 3. Verify the running services
+* **Swagger UI (Interactive API Docs):** `http://localhost:8080/swagger-ui.html`
+* **Actuator Health Check:** `http://localhost:8080/actuator/health`
+
+### 4. Stop the containers
+```bash
+docker compose down
+```
+*(Database data and uploaded resumes persist safely in Docker named volumes `mysql_data` and `resume_uploads`.)*
 
 ---
 
-## Roadmap
+## Running Automated Tests
 
-- [x] Authentication & JWT Security
-- [x] Profile, Skills & Preferences Management
-- [x] Resume Upload, Deduplication & Text Extraction
-- [x] Job Ingestion & Deterministic Deduplication
-- [x] Two-Stage Matching & Scoring Engine
-- [x] Application Workflow, State Machine, Optimistic Locking & Audit Log
-- [ ] Dashboard Summary Endpoint & Swagger/OpenAPI Documentation
-- [ ] Unit Tests (JUnit 5 + Mockito)
-- [ ] Docker & Docker Compose Setup
+Unit tests cover Finite State Machine transition rules and core `ApplicationService` business logic using JUnit 5 and Mockito:
+
+```bash
+./mvnw test
+```
+
+---
+
+## Key Engineering Learnings
+
+* **Domain-Driven Guardrails:** Encapsulating state transition rules inside the domain (`ApplicationStatus`) keeps service classes clean and eliminates invalid data states.
+* **Schema Evolution with Flyway:** Managing database changes through versioned SQL migrations ensures identical schemas across local development and Docker containers.
+* **Container Security & Permissions:** Running containers as a non-root user (`appuser`) and properly configuring Linux directory ownership (`chown`) for mounted volumes prevents production `AccessDeniedException` failures.
+* **Multi-Stage Docker Optimization:** Separating Maven dependency resolution and compilation from the final `eclipse-temurin:21-jre-alpine` runtime drastically reduces image size and attack surface.
+
+---
+
+## Upcoming Roadmap
+
+* **Automated Job Fetcher:** Background `@Scheduled` jobs integrating external Job APIs to pull fresh listings automatically.
+* **AI Layer (LLM Integration):** Automated resume-to-JD gap analysis and tailored cover letter generation.
+* **Chrome Extension Companion:** 1-click form auto-filler connected to this backend via authenticated REST APIs.
