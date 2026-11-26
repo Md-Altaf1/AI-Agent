@@ -15,6 +15,8 @@ public interface ResumeVersionRepository extends JpaRepository<ResumeVersion, Lo
 
     List<ResumeVersion> findByResumeIdOrderByVersionNoDesc(Long resumeId);
 
+    List<ResumeVersion> findByResumeUserId(Long userId);
+
     Optional<ResumeVersion> findFirstByResumeIdOrderByVersionNoDesc(Long resumeId);
 
     Optional<ResumeVersion> findByResumeIdAndSha256(Long resumeId, String sha256);

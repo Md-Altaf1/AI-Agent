@@ -216,4 +216,24 @@ public class JobMatchingService {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + email));
     }
+
+    @Transactional
+    public int evaluateAllJobsForUser(String email) {
+        User user = findUserByEmail(email);
+        List<ResumeVersion> resumeVersions = resumeVersionRepository.findByResumeUserId(user.getId());
+        if (resumeVersions.isEmpty()) {
+            return 0;
+        }
+
+        List<Job> jobs = jobRepository.findAll();
+        int evaluatedCount = 0;
+
+        for (ResumeVersion rv : resumeVersions) {
+            for (Job job : jobs) {
+                evaluateMatch(email, job.getId(), rv.getId());
+                evaluatedCount++;
+            }
+        }
+        return evaluatedCount;
+    }
 }
