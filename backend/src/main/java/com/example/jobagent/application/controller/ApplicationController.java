@@ -1,11 +1,6 @@
 package com.example.jobagent.application.controller;
 
-import com.example.jobagent.application.dto.ApplicationAnswerResponse;
-import com.example.jobagent.application.dto.ApplicationEventResponse;
-import com.example.jobagent.application.dto.ApplicationResponse;
-import com.example.jobagent.application.dto.CreateApplicationRequest;
-import com.example.jobagent.application.dto.UpdateApplicationStatusRequest;
-import com.example.jobagent.application.dto.UpsertAnswerRequest;
+import com.example.jobagent.application.dto.*;
 import com.example.jobagent.application.entity.ApplicationStatus;
 import com.example.jobagent.application.service.ApplicationService;
 import jakarta.validation.Valid;
@@ -100,5 +95,10 @@ public class ApplicationController {
         return ResponseEntity.ok(
                 applicationService.getEvents(authentication.getName(), applicationId)
         );
+    }
+
+    @GetMapping("/summary")
+    public ResponseEntity<ApplicationSummaryResponse> getSummary(Authentication authentication) {
+        return ResponseEntity.ok(applicationService.getSummary(authentication.getName()));
     }
 }

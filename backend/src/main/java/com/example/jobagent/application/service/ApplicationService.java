@@ -1,11 +1,6 @@
 package com.example.jobagent.application.service;
 
-import com.example.jobagent.application.dto.ApplicationAnswerResponse;
-import com.example.jobagent.application.dto.ApplicationEventResponse;
-import com.example.jobagent.application.dto.ApplicationResponse;
-import com.example.jobagent.application.dto.CreateApplicationRequest;
-import com.example.jobagent.application.dto.UpdateApplicationStatusRequest;
-import com.example.jobagent.application.dto.UpsertAnswerRequest;
+import com.example.jobagent.application.dto.*;
 import com.example.jobagent.application.entity.ActorType;
 import com.example.jobagent.application.entity.Application;
 import com.example.jobagent.application.entity.ApplicationAnswer;
@@ -30,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -139,6 +135,13 @@ public class ApplicationService {
         ApplicationStatus previousStatus = application.getStatus();
         ApplicationStatus newStatus = request.status();
 
+        // Enforce strict state machine transitions
+        if (previousStatus != newStatus && !previousStatus.canTransitionTo(newStatus)) {
+            throw new IllegalArgumentException(
+                    "Invalid status transition from " + previousStatus + " to " + newStatus
+            );
+        }
+
         application.setStatus(newStatus);
 
         if (newStatus == ApplicationStatus.SUBMITTED && application.getAppliedAt() == null) {
@@ -159,16 +162,28 @@ public class ApplicationService {
 
         Application saved = applicationRepository.save(application);
 
-        ApplicationEventType eventType = (newStatus == ApplicationStatus.APPROVED)
-                ? ApplicationEventType.APPROVAL_GRANTED
-                : ApplicationEventType.STATUS_CHANGED;
+        ApplicationEventType eventType;
+        if (previousStatus == newStatus) {
+            eventType = ApplicationEventType.NOTE_ADDED;
+        } else if (newStatus == ApplicationStatus.APPROVED) {
+            eventType = ApplicationEventType.APPROVAL_GRANTED;
+        } else {
+            eventType = ApplicationEventType.STATUS_CHANGED;
+        }
 
         Map<String, Object> details = new LinkedHashMap<>();
         if (request.notes() != null && !request.notes().isBlank()) {
             details.put("notes", request.notes().trim());
         }
 
-        recordEvent(saved, eventType, previousStatus.name(), newStatus.name(), ActorType.USER, details.isEmpty() ? null : details);
+        recordEvent(
+                saved,
+                eventType,
+                previousStatus != newStatus ? previousStatus.name() : null,
+                previousStatus != newStatus ? newStatus.name() : null,
+                ActorType.USER,
+                details.isEmpty() ? null : details
+        );
 
         return ApplicationResponse.fromEntity(saved);
     }
@@ -261,5 +276,23 @@ public class ApplicationService {
     private User findUserByEmail(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + email));
+    }
+
+    @Transactional(readOnly = true)
+    public ApplicationSummaryResponse getSummary(String email) {
+        User user = findUserByEmail(email);
+
+        List<ApplicationRepository.StatusCountProjection> rows =
+                applicationRepository.countByUserIdGroupByStatus(user.getId());
+
+        Map<ApplicationStatus, Long> counts = new EnumMap<>(ApplicationStatus.class);
+        long total = 0;
+
+        for (ApplicationRepository.StatusCountProjection row : rows) {
+            counts.put(row.getStatus(), row.getCount());
+            total += row.getCount();
+        }
+
+        return new ApplicationSummaryResponse(total, counts);
     }
 }

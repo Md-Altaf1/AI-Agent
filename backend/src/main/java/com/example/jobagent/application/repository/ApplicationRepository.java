@@ -5,8 +5,11 @@ import com.example.jobagent.application.entity.ApplicationStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -19,4 +22,17 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
     Page<Application> findByUserIdOrderByUpdatedAtDesc(Long userId, Pageable pageable);
 
     Page<Application> findByUserIdAndStatusOrderByUpdatedAtDesc(Long userId, ApplicationStatus status, Pageable pageable);
+
+    interface StatusCountProjection {
+        ApplicationStatus getStatus();
+        long getCount();
+    }
+
+    @Query("""
+            SELECT a.status AS status, COUNT(a) AS count
+            FROM Application a
+            WHERE a.user.id = :userId
+            GROUP BY a.status
+            """)
+    List<StatusCountProjection> countByUserIdGroupByStatus(@Param("userId") Long userId);
 }
