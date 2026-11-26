@@ -1,172 +1,125 @@
-# AI-Agent 🚀
+# Job Agent Backend
 
-A backend application built with Java and Spring Boot, designed to manage user authentication, profiles, and resume-related operations through REST APIs.
-
-## 📌 Overview
-
-AI-Agent is a backend service focused on secure authentication, resume management, and file processing. It provides RESTful APIs for handling user registration, login, profile-related operations, and resume uploads and downloads.
-
-The project follows a modular backend architecture to maintain separation of concerns, improve maintainability, and support future feature expansion.
-
-## ⚙️ Tech Stack
-
-- **Language:** Java
-- **Framework:** Spring Boot
-- **Database:** MySQL
-- **ORM:** Spring Data JPA / Hibernate
-- **Authentication:** JWT (JSON Web Token)
-- **Build Tool:** Maven
-- **API Architecture:** REST
-- **Database Migration:** Flyway
-- **File Handling:** Multipart File Upload & Download
-
-## ✨ Features
-
-- 🔐 User Registration and Login
-- 🛡️ JWT-Based Authentication
-- 👤 User Management
-- 📄 Resume Upload and Management
-- 📥 Resume File Download
-- 📂 File Validation
-- 🔒 Protected API Endpoints
-- 🗄️ Database Integration
-- 🛠️ Database Migration Management
-
-## 🏗️ Project Structure
-
-```text
-backend/
-├── src/
-│   └── main/
-│       ├── java/
-│       │   └── com/example/jobagent/
-│       │       ├── auth/
-│       │       ├── common/
-│       │       ├── profile/
-│       │       ├── resume/
-│       │       └── BackendApplication.java
-│       │
-│       └── resources/
-│           ├── db/migration/
-│           ├── application.properties
-│           └── static/
-│
-├── uploads/
-├── pom.xml
-├── mvnw
-└── mvnw.cmd
-```
-
-## 🔐 Authentication
-
-The application uses JWT-based authentication to secure API endpoints.
-
-The authentication flow includes:
-
-1. User registration.
-2. User login.
-3. Authentication validation.
-4. JWT generation.
-5. Token-based authorization for protected endpoints.
-
-## 📄 Resume Management
-
-The backend provides resume-related functionality, including:
-
-- Resume file uploads.
-- File validation.
-- Resume file storage.
-- Resume download functionality.
-
-The file validation process checks file extensions and file content signatures to help prevent invalid file uploads.
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-Make sure you have installed:
-
-- Java
-- Maven
-- MySQL
-- Git
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/Md-Altaf1/AI-Agent.git
-```
-
-### 2. Navigate to the Backend Directory
-
-```bash
-cd AI-Agent/backend
-```
-
-### 3. Configure Environment Variables
-
-Configure the required environment variables for database connectivity and application configuration.
-
-Do not commit credentials or sensitive environment files to GitHub.
-
-### 4. Run the Application
-
-Using Maven Wrapper:
-
-**Windows:**
-
-```bash
-mvnw.cmd spring-boot:run
-```
-
-**Linux/macOS:**
-
-```bash
-./mvnw spring-boot:run
-```
-
-Alternatively, run the application from your IDE.
-
-## 🧪 API Testing
-
-REST API endpoints can be tested using tools such as:
-
-- Postman
-- IntelliJ HTTP Client
-
-## 📈 Future Improvements
-
-- AI-powered resume analysis
-- Automated job matching
-- Job application automation
-- Resume optimization
-- Job tracking dashboard
-- Integration with external job platforms
-
-## 👨‍💻 Author
-
-**Md Altaf**
-
-Java Backend Developer | Spring Boot | REST APIs | MySQL
-
-GitHub: [Md-Altaf1](https://github.com/Md-Altaf1)
+A modular, production-ready Spring Boot backend for a personal job application assistant. It manages user profiles, resume parsing and versioning, deterministic job deduplication, two-stage rule-based job matching, and a full application tracking workflow backed by an append-only audit log.
 
 ---
 
-⭐ If you find this project interesting, feel free to explore the repository.
+## Tech Stack
+
+* **Language:** Java 21
+* **Framework:** Spring Boot 3.x (Web, Data JPA, Security, Validation)
+* **Database & Migrations:** MySQL 8 (InnoDB), Flyway (`ddl-auto: validate`)
+* **Authentication:** Stateless JWT (Access & Refresh token flow)
+* **Document Parsing:** Apache PDFBox (PDF), Apache POI `XWPFWordExtractor` (DOCX)
+* **ORM Mapping:** Hibernate 6 with native JSON column mapping (`@JdbcTypeCode(SqlTypes.JSON)`)
+* **Build Tool:** Maven
+
+---
+
+## Architecture
+
+The project follows a **Modular Monolith** structure organised by business domain under `com.example.jobagent`:
+
+```text
+com.example.jobagent
+├── auth          # User registration, login, JWT generation & security filter
+├── profile       # User profile, declared skills, and job search preferences
+├── resume        # Multipart file storage, SHA-256 deduplication, PDF/DOCX parsing
+├── job           # Job sources, manual import, deterministic deduplication & search
+├── matching      # Two-stage matching engine (hard filters + weighted skill scoring)
+├── application   # Application lifecycle, form answers, state machine & audit trail
+└── common.config # Global exception handling & shared security/web configuration
 ```
 
-### How to update your README on GitHub
+---
 
-1. Open your **AI-Agent** repository.
-2. Switch to the `master` branch.
-3. Open `README.md`.
-4. Click the **pencil (Edit)** icon.
-5. Replace the existing content with the README above.
-6. Click **Commit changes**.
-7. Enter the commit message: `Improve project README documentation`.
-8. Click **Commit changes**.
+## Key Engineering Highlights
 
-**One recommendation:** Your repository is public, so before adding more code, ensure `.env`, database credentials, JWT secrets, and personal data aren't exposed.
+* **Deterministic Deduplication & Change Detection:** Jobs are deduplicated using a SHA-256 `dedupeKey` (normalized company, title, and URL) and tracked for description updates via `contentHash`. Resumes use SHA-256 file hashing to prevent duplicate uploads.
+* **Secure File Handling:** Resume uploads validate file types and enforce path traversal protection before writing to local storage.
+* **Two-Stage Matching Engine:**
+  1. **Hard Rule Filtering:** Evaluates excluded title keywords, experience limits, preferred locations, and employment types.
+  2. **Weighted Skill Scoring:** Scores required skills (weight `2`) and optional skills (weight `1`) against both declared user skills and extracted resume text, caching results per `(resume_version_id, job_id)` and `content_hash`.
+* **Strict Status State Machine:** Application status transitions are enforced directly in the `ApplicationStatus` domain enum to prevent invalid jumps (e.g., `DISCOVERED` directly to `INTERVIEW_SCHEDULED`).
+* **Concurrency Control:** Uses JPA `@Version` optimistic locking on `applications`, returning `409 Conflict` via `GlobalExceptionHandler` on concurrent write collisions.
+* **Append-Only Audit Log:** Every application creation, status change, and answer edit is logged to `application_events` within the same `@Transactional` boundary. Immutability is enforced at both the JPA layer (`@Immutable`) and the database layer (MySQL `BEFORE UPDATE` and `BEFORE DELETE` triggers).
 
-If you'd like, I can next help you make this README more **professional with badges, API endpoint documentation, architecture, screenshots, and a database diagram**.
+---
+
+## API Overview
+
+All endpoints except `/api/auth/**` require an `Authorization: Bearer <accessToken>` header.
+
+| Module | Method | Endpoint | Description |
+| :--- | :--- | :--- | :--- |
+| **Auth** | `POST` | `/api/auth/register` | Register a new user account |
+| | `POST` | `/api/auth/login` | Authenticate and receive JWT tokens |
+| **Profile** | `GET / PUT` | `/api/profile` | View or update user profile |
+| | `GET / POST / DELETE` | `/api/profile/skills` | Manage declared user skills |
+| | `GET / PUT` | `/api/profile/preferences` | Manage job search preferences & hard filters |
+| **Resumes** | `POST` | `/api/resumes` | Upload a PDF/DOCX resume (`multipart/form-data`) |
+| | `GET` | `/api/resumes` | List user resumes and versions |
+| **Jobs** | `POST` | `/api/jobs/import` | Import a job with skills (auto-deduplicated) |
+| | `GET` | `/api/jobs` | Paginated list of active jobs |
+| | `GET` | `/api/jobs/{jobId}` | Fetch job details and required skills |
+| **Matching** | `POST` | `/api/matches/evaluate` | Evaluate and cache match score for a job & resume version |
+| | `GET` | `/api/matches/resume-versions/{id}` | List scored job matches ordered by score |
+| **Applications** | `POST` | `/api/applications` | Create a new job application |
+| | `GET` | `/api/applications` | Paginated list of user applications (optional `status` filter) |
+| | `PATCH` | `/api/applications/{id}/status` | Transition application status (state-machine validated) |
+| | `PUT / GET` | `/api/applications/{id}/answers` | Upsert or fetch application form answers |
+| | `GET` | `/api/applications/{id}/events` | Fetch chronological append-only audit log |
+
+---
+
+## Local Setup
+
+### Prerequisites
+* Java 21
+* Maven 3.9+
+* MySQL 8.0+
+
+### 1. Create the Database
+```sql
+CREATE DATABASE job_agent;
+```
+
+### 2. Configure Environment / `application.yml`
+Update `src/main/resources/application.yml` (or set environment variables) with your local MySQL credentials, JWT secret, and resume upload directory:
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/job_agent
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:your_password}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:replace-with-a-secure-256-bit-base64-secret}
+  storage:
+    resume-dir: ${RESUME_STORAGE_DIR:./uploads/resumes}
+```
+
+### 3. Run the Application
+Flyway will automatically apply all schema migrations on startup, and Hibernate will validate the entities against the schema.
+
+```bash
+mvn spring-boot:run
+```
+
+The API will be available at `http://localhost:8080`.
+
+---
+
+## Roadmap
+
+- [x] Authentication & JWT Security
+- [x] Profile, Skills & Preferences Management
+- [x] Resume Upload, Deduplication & Text Extraction
+- [x] Job Ingestion & Deterministic Deduplication
+- [x] Two-Stage Matching & Scoring Engine
+- [x] Application Workflow, State Machine, Optimistic Locking & Audit Log
+- [ ] Dashboard Summary Endpoint & Swagger/OpenAPI Documentation
+- [ ] Unit Tests (JUnit 5 + Mockito)
+- [ ] Docker & Docker Compose Setup
